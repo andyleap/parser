@@ -26,16 +26,23 @@ func (g *Grammer) Set(ng *Grammer) {
 	g.parse = ng.parse
 }
 
-func (g *Grammer) Node(node func(Match) Match) {
+func (g *Grammer) Node(node func(Match) (Match, error)) {
 	oldp := g.parse
 	g.parse = func(rs io.ReadSeeker) (Match, error) {
 		m, err := oldp(rs)
 		if err == nil {
-			m = node(m)
-			return m, nil
+			m, err = node(m)
+			if err == nil {
+				return m, nil
+			}
 		}
 		return nil, err
 	}
+}
+
+func (g *Grammer) Parse(rs io.ReadSeeker) (Match, error) {
+	
+	
 }
 
 func Set(set string) *Grammer {

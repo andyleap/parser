@@ -9,22 +9,25 @@ import (
 func test_main(t *testing.T) {
 
 	number := And(Mult(0, 1, Lit("-")), Mult(1, 0, Set("0-9")), Mult(0, 1, And(Lit("."), Mult(0, 0, Set("0-9")))))
-	number.Node(func(m Match) Match {
-		v, _ := strconv.ParseFloat(String(m), 64)
-		return v
+	number.Node(func(m Match) (Match, error) {
+		v, err := strconv.ParseFloat(String(m), 64)
+		if err != nil {
+			return v, nil
+		}
+		return nil, err
 	})
 
 	expr := &Grammer{}
 	
 	parenexpr := And(Lit("("), Tag("expr", expr), Lit(")"))
-	parenexpr.Node(func(m Match) Match {
-		return GetTag(m, "expr").Match
+	parenexpr.Node(func(m Match) (Match, error) {
+		return GetTag(m, "expr").Match, nil
 	})
 
 	factor := Or(number, parenexpr)
 
 	term := And(factor, Mult(0, 0, And(Set("*/"), factor)))
-	term.Node(func(m Match) Match {
+	term.Node(func(m Match) (Match, error) {
 		mt := m.(MatchTree)
 		val := mt[0].(float64)
 		for _, op := range mt[1].(MatchTree) {
@@ -35,11 +38,11 @@ func test_main(t *testing.T) {
 				val = val / op.(MatchTree)[1].(float64)
 			}
 		}
-		return val
+		return val, nil
 	})
 
 	expr.Set(And(term, Mult(0, 0, And(Set("+-"), term))))
-	expr.Node(func(m Match) Match {
+	expr.Node(func(m Match) (Match, error) {
 		mt := m.(MatchTree)
 		val := mt[0].(float64)
 		for _, op := range mt[1].(MatchTree) {
@@ -50,7 +53,7 @@ func test_main(t *testing.T) {
 				val = val - op.(MatchTree)[1].(float64)
 			}
 		}
-		return val
+		return val, nil
 	})
 	
 	
