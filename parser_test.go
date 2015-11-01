@@ -2,7 +2,6 @@ package parser
 
 import (
 	"testing"
-	"strings"
 	"strconv"
 )
 
@@ -57,13 +56,21 @@ func test_main(t *testing.T) {
 	})
 	
 	
-	test := strings.NewReader("-12.5*4/(2+2)+(30*2)/3+6")
-	m, err := expr.parse(test)
+	m, err := expr.ParseString("-12.5*4/(2+2)+(30*2)/3+6")
 
 	if err != nil {
 		t.Error(err)
 	}
 	if m.(float64) != 13.5 {
 		t.Errorf("%v != 13.5", m)
+	}
+	
+	m, err = expr.ParseString("5--1")
+
+	if err != nil {
+		t.Error(err)
+	}
+	if m.(float64) != 6 {
+		t.Errorf("%v != 6", m)
 	}
 }

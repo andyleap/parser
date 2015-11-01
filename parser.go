@@ -49,7 +49,7 @@ func (g *Grammer) Parse(rs io.ReadSeeker) (Match, error) {
 }
 
 func (g *Grammer) ParseString(s string) (Match, error) {
-	m, err := g.parse(strings.NewReader(s)
+	m, err := g.parse(strings.NewReader(s))
 	if err != nil {
 		return nil, err
 	}
