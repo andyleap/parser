@@ -166,17 +166,6 @@ func GetTag(m Match, tag string) *TaggedMatch {
 	return nil
 }
 
-func Test(test string, g *Grammer) {
-	fmt.Println(test)
-	testr := strings.NewReader(test)
-	m, err := g.parse(testr)
-	if m == nil {
-		fmt.Println(err)
-	} else {
-		fmt.Printf("%#v\n", m)
-	}
-}
-
 func String(m Match) string {
 	switch m := m.(type) {
 	case MatchTree:
