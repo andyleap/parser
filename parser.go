@@ -15,7 +15,7 @@ type MatchTree []Match
 
 type TaggedMatch struct {
 	Match Match
-	Tag string
+	Tag   string
 }
 
 type Grammer struct {
@@ -157,7 +157,7 @@ func Tag(tag string, g *Grammer) *Grammer {
 		}
 		tm := TaggedMatch{
 			Match: m,
-			Tag: tag,
+			Tag:   tag,
 		}
 		return tm, nil
 	}}
