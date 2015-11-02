@@ -76,13 +76,13 @@ func TestMath(t *testing.T) {
 
 func BenchmarkMath(b *testing.B) {
 
-	number := And(Mult(0, 1, Lit("-")), Mult(1, 0, Set("0-9")), Mult(0, 1, And(Lit("."), Mult(0, 0, Set("0-9")))))
+	number := And(Mult(1, 0, Set("0-9")), Mult(0, 1, And(Lit("."), Mult(0, 0, Set("0-9")))))
 	number.Node(func(m Match) (Match, error) {
 		v, err := strconv.ParseFloat(String(m), 64)
-		if err == nil {
-			return v, nil
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		return v, nil
 	})
 
 	expr := &Grammer{}
