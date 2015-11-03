@@ -75,25 +75,6 @@ func Set(set string) *Grammar {
 	}}
 }
 
-func Range(c1 ) *Grammar {
-	regset, _ := regexp.Compile(fmt.Sprintf("[%s]", set))
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		b := make([]byte, 1)
-		c, _ := rs.Read(b)
-		if c < 1 {
-			rs.Seek(pos, 0)
-			return nil, fmt.Errorf("Unexpected EOF")
-		}
-		if regset.Match(b) {
-			m := MatchString(b)
-			return m, nil
-		}
-		rs.Seek(pos, 0)
-		return nil, fmt.Errorf("Expected %s, got %s", set, string(b))
-	}}
-}
-
 func Lit(text string) *Grammar {
 	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
