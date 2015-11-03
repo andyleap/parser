@@ -18,15 +18,15 @@ type TaggedMatch struct {
 	Tag   string
 }
 
-type Grammer struct {
+type Grammar struct {
 	parse func(rs io.ReadSeeker) (Match, error)
 }
 
-func (g *Grammer) Set(ng *Grammer) {
+func (g *Grammar) Set(ng *Grammar) {
 	g.parse = ng.parse
 }
 
-func (g *Grammer) Node(node func(Match) (Match, error)) {
+func (g *Grammar) Node(node func(Match) (Match, error)) {
 	oldp := g.parse
 	g.parse = func(rs io.ReadSeeker) (Match, error) {
 		m, err := oldp(rs)
@@ -40,7 +40,7 @@ func (g *Grammer) Node(node func(Match) (Match, error)) {
 	}
 }
 
-func (g *Grammer) Parse(rs io.ReadSeeker) (Match, error) {
+func (g *Grammar) Parse(rs io.ReadSeeker) (Match, error) {
 	m, err := g.parse(rs)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (g *Grammer) Parse(rs io.ReadSeeker) (Match, error) {
 	return m, nil
 }
 
-func (g *Grammer) ParseString(s string) (Match, error) {
+func (g *Grammar) ParseString(s string) (Match, error) {
 	m, err := g.parse(strings.NewReader(s))
 	if err != nil {
 		return nil, err
@@ -56,9 +56,9 @@ func (g *Grammer) ParseString(s string) (Match, error) {
 	return m, nil
 }
 
-func Set(set string) *Grammer {
+func Set(set string) *Grammar {
 	regset, _ := regexp.Compile(fmt.Sprintf("[%s]", set))
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		b := make([]byte, 1)
 		c, _ := rs.Read(b)
@@ -75,8 +75,27 @@ func Set(set string) *Grammer {
 	}}
 }
 
-func Lit(text string) *Grammer {
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+func Range(c1 ) *Grammar {
+	regset, _ := regexp.Compile(fmt.Sprintf("[%s]", set))
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
+		pos, _ := rs.Seek(0, 1)
+		b := make([]byte, 1)
+		c, _ := rs.Read(b)
+		if c < 1 {
+			rs.Seek(pos, 0)
+			return nil, fmt.Errorf("Unexpected EOF")
+		}
+		if regset.Match(b) {
+			m := MatchString(b)
+			return m, nil
+		}
+		rs.Seek(pos, 0)
+		return nil, fmt.Errorf("Expected %s, got %s", set, string(b))
+	}}
+}
+
+func Lit(text string) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		b := make([]byte, len(text))
 		c, _ := rs.Read(b)
@@ -93,8 +112,8 @@ func Lit(text string) *Grammer {
 	}}
 }
 
-func And(ps ...*Grammer) *Grammer {
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+func And(ps ...*Grammar) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		matches := []Match{}
 		for _, p := range ps {
@@ -110,8 +129,8 @@ func And(ps ...*Grammer) *Grammer {
 	}}
 }
 
-func Or(ps ...*Grammer) *Grammer {
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+func Or(ps ...*Grammar) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		errs := []error{}
 		for _, p := range ps {
@@ -127,11 +146,11 @@ func Or(ps ...*Grammer) *Grammer {
 	}}
 }
 
-func Mult(n, m int, p *Grammer) *Grammer {
+func Mult(n, m int, p *Grammar) *Grammar {
 	if m == 0 {
 		m = int(^uint(0) >> 1)
 	}
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		ms := make(MatchTree, 0)
 		for i := 0; i < m; i++ {
@@ -149,8 +168,8 @@ func Mult(n, m int, p *Grammer) *Grammer {
 	}}
 }
 
-func Tag(tag string, g *Grammer) *Grammer {
-	return &Grammer{parse: func(rs io.ReadSeeker) (Match, error) {
+func Tag(tag string, g *Grammar) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		m, err := g.parse(rs)
 		if err != nil {
 			return nil, err

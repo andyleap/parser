@@ -16,7 +16,7 @@ func TestMath(t *testing.T) {
 		return nil, err
 	})
 
-	expr := &Grammer{}
+	expr := &Grammar{}
 
 	parenexpr := And(Lit("("), Tag("expr", expr), Lit(")"))
 	parenexpr.Node(func(m Match) (Match, error) {
@@ -85,7 +85,7 @@ func BenchmarkMath(b *testing.B) {
 		return v, nil
 	})
 
-	expr := &Grammer{}
+	expr := &Grammar{}
 
 	parenexpr := And(Lit("("), Tag("expr", expr), Lit(")"))
 	parenexpr.Node(func(m Match) (Match, error) {

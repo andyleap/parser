@@ -6,7 +6,7 @@ Parser Combinator Library
 ```
 import p "github.com/andyleap/parser"
 
-func MakeParser() *p.Grammer {
+func MakeParser() *p.Grammar {
   number := p.And(p.Mult(0, 1, p.Lit("-")), p.Mult(1, 0, p.Set("0-9")), p.Mult(0, 1, p.And(p.Lit("."), p.Mult(0, 0, p.Set("0-9")))))
   number.Node(func(m Match) (Match, error) {
 		v, err := strconv.ParseFloat(String(m), 64)
