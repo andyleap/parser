@@ -20,7 +20,7 @@ func TestMath(t *testing.T) {
 
 	parenexpr := And(Lit("("), Tag("expr", expr), Lit(")"))
 	parenexpr.Node(func(m Match) (Match, error) {
-		return GetTag(m, "expr").Match, nil
+		return GetTag(m, "expr"), nil
 	})
 
 	factor := Or(number, parenexpr)
@@ -89,7 +89,7 @@ func BenchmarkMath(b *testing.B) {
 
 	parenexpr := And(Lit("("), Tag("expr", expr), Lit(")"))
 	parenexpr.Node(func(m Match) (Match, error) {
-		return GetTag(m, "expr").Match, nil
+		return GetTag(m, "expr"), nil
 	})
 
 	factor := Or(number, parenexpr)

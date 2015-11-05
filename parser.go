@@ -163,7 +163,7 @@ func Tag(tag string, g *Grammar) *Grammar {
 	}}
 }
 
-func GetTag(m Match, tag string) *TaggedMatch {
+func GetTag(m Match, tag string) Match {
 	switch m := m.(type) {
 	case MatchTree:
 		for _, mi := range m {
@@ -177,9 +177,31 @@ func GetTag(m Match, tag string) *TaggedMatch {
 		return nil
 	case TaggedMatch:
 		if tag == m.Tag {
-			return &m
+			return m.Match
 		}
 		return GetTag(m.Match, tag)
+	}
+	return nil
+}
+
+func GetTags(m Match, tag string) []Match {
+	switch m := m.(type) {
+	case MatchTree:
+		tms := []Match{}
+		for _, mi := range m {
+			tm := GetTags(mi, tag)
+			if tm != nil {
+				tms = append(tms, tm...)
+			}
+		}
+		return tms
+	case MatchString:
+		return nil
+	case TaggedMatch:
+		if tag == m.Tag {
+			return append(GetTags(m.Match, tag), m.Match)
+		}
+		return GetTags(m.Match, tag)
 	}
 	return nil
 }
