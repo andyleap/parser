@@ -18,6 +18,14 @@ type TaggedMatch struct {
 	Tag   string
 }
 
+type fatalError struct {
+	err error
+}
+
+func (fe fatalError) Error() string {
+	return fmt.Sprintf("Fatal match error: %s", fe.err)
+}
+
 type Grammar struct {
 	parse func(rs io.ReadSeeker) (Match, error)
 }
@@ -71,7 +79,7 @@ func Set(set string) *Grammar {
 			return m, nil
 		}
 		rs.Seek(pos, 0)
-		return nil, fmt.Errorf("Expected %s, got %s", set, string(b))
+		return nil, fmt.Errorf("Expected %q, got %q", set, string(b))
 	}}
 }
 
@@ -89,7 +97,7 @@ func Lit(text string) *Grammar {
 			return m, nil
 		}
 		rs.Seek(pos, 0)
-		return nil, fmt.Errorf("Expected %s, got %s", text, string(b))
+		return nil, fmt.Errorf("Expected %q, got %q", text, string(b))
 	}}
 }
 
@@ -103,7 +111,9 @@ func And(ps ...*Grammar) *Grammar {
 				rs.Seek(pos, 0)
 				return nil, err
 			}
-			matches = append(matches, m)
+			if m != nil {
+				matches = append(matches, m)
+			}
 		}
 		mt := MatchTree(matches)
 		return mt, nil
@@ -119,6 +129,9 @@ func Or(ps ...*Grammar) *Grammar {
 			if err == nil {
 				return m, nil
 			} else {
+				if _, isFE := err.(fatalError); isFE {
+					return nil, err
+				}
 				errs = append(errs, err)
 			}
 			rs.Seek(pos, 0)
@@ -135,17 +148,53 @@ func Mult(n, m int, p *Grammar) *Grammar {
 		pos, _ := rs.Seek(0, 1)
 		ms := make(MatchTree, 0)
 		for i := 0; i < m; i++ {
-			match, err1 := p.parse(rs)
-			if err1 != nil {
+			match, err := p.parse(rs)
+			if err != nil {
+				if _, isFE := err.(fatalError); isFE {
+					return nil, err
+				}
 				if i < n {
 					rs.Seek(pos, 0)
-					return nil, fmt.Errorf("Error: not enough")
+					return nil, err
 				}
 				return ms, nil
 			}
 			ms = append(ms, match)
 		}
 		return ms, nil
+	}}
+}
+
+func Optional(g *Grammar) *Grammar {
+	return Mult(0, 1, g)
+}
+
+func Ignore(g *Grammar) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
+		_, err := g.parse(rs)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}}
+}
+
+func Require(ps ...*Grammar) *Grammar {
+	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
+		pos, _ := rs.Seek(0, 1)
+		matches := []Match{}
+		for _, p := range ps {
+			m, err := p.parse(rs)
+			if err != nil {
+				rs.Seek(pos, 0)
+				return nil, fatalError{err}
+			}
+			if m != nil {
+				matches = append(matches, m)
+			}
+		}
+		mt := MatchTree(matches)
+		return mt, nil
 	}}
 }
 
@@ -161,6 +210,13 @@ func Tag(tag string, g *Grammar) *Grammar {
 		}
 		return tm, nil
 	}}
+}
+
+func TagMatch(tag string, match Match) Match {
+	return TaggedMatch{
+		Match: match,
+		Tag:   tag,
+	}
 }
 
 func GetTag(m Match, tag string) Match {

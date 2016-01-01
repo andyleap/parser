@@ -64,13 +64,13 @@ func TestMath(t *testing.T) {
 		t.Errorf("%v != 13.5", m)
 	}
 
-	m, err = expr.ParseString("5--1")
+	m, err = expr.ParseString("5-1")
 
 	if err != nil {
 		t.Error(err)
 	}
-	if m.(float64) != 6 {
-		t.Errorf("%v != 6", m)
+	if m.(float64) != 4 {
+		t.Errorf("%v != 4", m)
 	}
 }
 
@@ -126,6 +126,6 @@ func BenchmarkMath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		expr.ParseString("5--1")
+		expr.ParseString("5-1")
 	}
 }
