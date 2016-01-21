@@ -272,6 +272,8 @@ func String(m Match) string {
 		return strings.Join(ss, "")
 	case MatchString:
 		return string(m)
+	case string:
+		return m
 	}
 	return ""
 }
