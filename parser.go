@@ -69,7 +69,7 @@ func Set(set string) *Grammar {
 	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		b := make([]byte, 1)
-		c, _ := rs.Read(b)
+		c, _ := io.ReadFull(rs, b)
 		if c < 1 {
 			rs.Seek(pos, 0)
 			return nil, fmt.Errorf("Unexpected EOF")
@@ -87,7 +87,7 @@ func Lit(text string) *Grammar {
 	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
 		pos, _ := rs.Seek(0, 1)
 		b := make([]byte, len(text))
-		c, _ := rs.Read(b)
+		c, _ := io.ReadFull(rs, b)
 		if c < len(text) {
 			rs.Seek(pos, 0)
 			return nil, fmt.Errorf("Unexpected EOF")
