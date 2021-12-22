@@ -3,20 +3,10 @@ package parser
 import (
 	"fmt"
 	"io"
-	"regexp"
-	"strings"
+	"unicode/utf8"
 )
 
-type Match interface{}
-
-type MatchString string
-
-type MatchTree []Match
-
-type TaggedMatch struct {
-	Match Match
-	Tag   string
-}
+//type Parser func[T any](rs io.ReadSeeker) (T, error)
 
 type fatalError struct {
 	err error
@@ -26,135 +16,148 @@ func (fe fatalError) Error() string {
 	return fmt.Sprintf("Fatal match error: %s", fe.err)
 }
 
-type Grammar struct {
-	parse func(rs io.ReadSeeker) (Match, error)
+type StatefulReader interface {
+	io.Reader
+	State() any
+	Restore(any)
 }
 
-func (g *Grammar) Set(ng *Grammar) {
-	g.parse = ng.parse
+type SimpleReader struct {
+	r io.ReadSeeker
 }
 
-func (g *Grammar) Node(node func(Match) (Match, error)) {
-	oldp := g.parse
-	g.parse = func(rs io.ReadSeeker) (Match, error) {
-		m, err := oldp(rs)
-		if err == nil {
-			m, err = node(m)
-			if err == nil {
-				return m, nil
-			}
-		}
-		return nil, err
-	}
+func (sr SimpleReader) Read(p []byte) (n int, err error) {
+	return sr.r.Read(p)
 }
 
-func (g *Grammar) Parse(rs io.ReadSeeker) (Match, error) {
-	m, err := g.parse(rs)
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+func (sr SimpleReader) State() any {
+	s, _ := sr.r.Seek(0, 1)
+	return s
 }
 
-func (g *Grammar) ParseString(s string) (Match, error) {
-	m, err := g.parse(strings.NewReader(s))
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+func (sr SimpleReader) Restore(s any) {
+	sr.r.Seek(s.(int64), 0)
 }
 
-func Set(set string) *Grammar {
-	regset, _ := regexp.Compile(fmt.Sprintf("[%s]", set))
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		b := make([]byte, 1)
-		c, _ := io.ReadFull(rs, b)
-		if c < 1 {
-			rs.Seek(pos, 0)
-			return nil, fmt.Errorf("Unexpected EOF")
-		}
-		if regset.Match(b) {
-			m := MatchString(b)
-			return m, nil
-		}
-		rs.Seek(pos, 0)
-		return nil, fmt.Errorf("Expected %q, got %q", set, string(b))
-	}}
-}
-
-func Lit(text string) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
+func Lit(text string) func(sr StatefulReader) (string, error) {
+	return func(sr StatefulReader) (string, error) {
+		s := sr.State()
 		b := make([]byte, len(text))
-		c, _ := io.ReadFull(rs, b)
+		c, _ := io.ReadFull(sr, b)
 		if c < len(text) {
-			rs.Seek(pos, 0)
-			return nil, fmt.Errorf("Unexpected EOF")
+			sr.Restore(s)
+			return "", fmt.Errorf("Unexpected EOF")
 		}
 		if string(b) == text {
-			m := MatchString(text)
-			return m, nil
+			return text, nil
 		}
-		rs.Seek(pos, 0)
-		return nil, fmt.Errorf("Expected %q, got %q", text, string(b))
-	}}
+		sr.Restore(s)
+		return "", fmt.Errorf("Expected %q, got %q", text, string(b))
+	}
 }
 
-func And(ps ...*Grammar) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		matches := []Match{}
+func readRune(sr StatefulReader) (rune, error) {
+	b := make([]byte, 1, 4)
+	_, err := sr.Read(b)
+	for !utf8.FullRune(b) && err != nil {
+		b = b[:len(b)+1]
+		_, err = sr.Read(b[len(b)-1:])
+	}
+	r, _ := utf8.DecodeRune(b)
+	return r, err
+}
+
+func Set(text string) func(sr StatefulReader) (string, error) {
+	//expand 0-9 to 0123456789
+	final := []rune{}
+	rawtext := []rune(text)
+	for i := range rawtext {
+		if rawtext[i] == '-' && i > 0 && i < len(rawtext)-1 {
+			for j := rawtext[i-1] + 1; j < rawtext[i+1]; j++ {
+				final = append(final, j)
+			}
+		} else {
+			final = append(final, rawtext[i])
+		}
+	}
+
+	return func(sr StatefulReader) (string, error) {
+		s := sr.State()
+		r, err := readRune(sr)
+		if err != nil {
+			sr.Restore(s)
+			return "", err
+		}
+		for _, tr := range final {
+			if r == tr {
+				return string(r), nil
+			}
+		}
+		sr.Restore(s)
+		return "", fmt.Errorf("Expected %q, got %q", text, string(r))
+	}
+}
+
+func Or[T any](ps ...func(sr StatefulReader) (T, error)) func(sr StatefulReader) (T, error) {
+	return func(sr StatefulReader) (T, error) {
+		s := sr.State()
 		for _, p := range ps {
-			m, err := p.parse(rs)
+			v, err := p(sr)
+			if err == nil {
+				return v, nil
+			}
+			sr.Restore(s)
+		}
+		var t T
+		return t, fmt.Errorf("No match")
+	}
+}
+
+func And[T any](ps ...func(sr StatefulReader) (T, error)) func(sr StatefulReader) ([]T, error) {
+	return func(sr StatefulReader) ([]T, error) {
+		vs := []T{}
+		s := sr.State()
+		for _, p := range ps {
+			v, err := p(sr)
 			if err != nil {
-				rs.Seek(pos, 0)
+				sr.Restore(s)
 				return nil, err
 			}
-			if m != nil {
-				matches = append(matches, m)
-			}
+			vs = append(vs, v)
 		}
-		mt := MatchTree(matches)
-		return mt, nil
-	}}
+		return vs, nil
+	}
 }
 
-func Or(ps ...*Grammar) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		errs := []error{}
-		for _, p := range ps {
-			m, err := p.parse(rs)
-			if err == nil {
-				return m, nil
-			} else {
-				if _, isFE := err.(fatalError); isFE {
-					return nil, err
-				}
-				errs = append(errs, err)
-			}
-			rs.Seek(pos, 0)
+func Optional[T any](p func(sr StatefulReader) (T, error)) func(sr StatefulReader) (T, error) {
+	return func(sr StatefulReader) (T, error) {
+		s := sr.State()
+		p, err := p(sr)
+		if err != nil {
+			sr.Restore(s)
 		}
-		return nil, fmt.Errorf("Or error, expected: (%v)", errs)
-	}}
+		if _, isFE := err.(fatalError); isFE {
+			return p, err
+		}
+		return p, nil
+	}
 }
 
-func Mult(n, m int, p *Grammar) *Grammar {
+func Mult[T any](n, m int, p func(sr StatefulReader) (T, error)) func(sr StatefulReader) ([]T, error) {
 	if m == 0 {
 		m = int(^uint(0) >> 1)
 	}
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		ms := make(MatchTree, 0)
+	return func(sr StatefulReader) ([]T, error) {
+		s := sr.State()
+		ms := []T{}
 		for i := 0; i < m; i++ {
-			match, err := p.parse(rs)
+			match, err := p(sr)
 			if err != nil {
 				if _, isFE := err.(fatalError); isFE {
 					return nil, err
 				}
 				if i < n {
-					rs.Seek(pos, 0)
+					sr.Restore(s)
 					return nil, err
 				}
 				return ms, nil
@@ -162,118 +165,16 @@ func Mult(n, m int, p *Grammar) *Grammar {
 			ms = append(ms, match)
 		}
 		return ms, nil
-	}}
+	}
 }
 
-func Optional(g *Grammar) *Grammar {
-	return Mult(0, 1, g)
-}
-
-func Ignore(g *Grammar) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		_, err := g.parse(rs)
+func Convert[T, U any](p func(sr StatefulReader) (T, error), f func(T) (U, error)) func(sr StatefulReader) (U, error) {
+	return func(sr StatefulReader) (U, error) {
+		v, err := p(sr)
 		if err != nil {
-			return nil, err
+			var u U
+			return u, err
 		}
-		return nil, nil
-	}}
-}
-
-func Require(ps ...*Grammar) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		pos, _ := rs.Seek(0, 1)
-		matches := []Match{}
-		for _, p := range ps {
-			m, err := p.parse(rs)
-			if err != nil {
-				rs.Seek(pos, 0)
-				return nil, fatalError{err}
-			}
-			if m != nil {
-				matches = append(matches, m)
-			}
-		}
-		mt := MatchTree(matches)
-		return mt, nil
-	}}
-}
-
-func Tag(tag string, g *Grammar) *Grammar {
-	return &Grammar{parse: func(rs io.ReadSeeker) (Match, error) {
-		m, err := g.parse(rs)
-		if err != nil {
-			return nil, err
-		}
-		tm := TaggedMatch{
-			Match: m,
-			Tag:   tag,
-		}
-		return tm, nil
-	}}
-}
-
-func TagMatch(tag string, match Match) Match {
-	return TaggedMatch{
-		Match: match,
-		Tag:   tag,
+		return f(v)
 	}
-}
-
-func GetTag(m Match, tag string) Match {
-	switch m := m.(type) {
-	case MatchTree:
-		for _, mi := range m {
-			tm := GetTag(mi, tag)
-			if tm != nil {
-				return tm
-			}
-		}
-		return nil
-	case MatchString:
-		return nil
-	case TaggedMatch:
-		if tag == m.Tag {
-			return m.Match
-		}
-		return GetTag(m.Match, tag)
-	}
-	return nil
-}
-
-func GetTags(m Match, tag string) []Match {
-	switch m := m.(type) {
-	case MatchTree:
-		tms := []Match{}
-		for _, mi := range m {
-			tm := GetTags(mi, tag)
-			if tm != nil {
-				tms = append(tms, tm...)
-			}
-		}
-		return tms
-	case MatchString:
-		return nil
-	case TaggedMatch:
-		if tag == m.Tag {
-			return append(GetTags(m.Match, tag), m.Match)
-		}
-		return GetTags(m.Match, tag)
-	}
-	return nil
-}
-
-func String(m Match) string {
-	switch m := m.(type) {
-	case MatchTree:
-		ss := make([]string, len(m))
-		for i, mi := range m {
-			ss[i] = String(mi)
-		}
-		return strings.Join(ss, "")
-	case MatchString:
-		return string(m)
-	case string:
-		return m
-	}
-	return ""
 }
